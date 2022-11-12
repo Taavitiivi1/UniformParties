@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Threading.Tasks;
 using TaleWorlds.CampaignSystem;
@@ -50,5 +51,25 @@ namespace UniformParties {
         public static void Message(String message) {
             InformationManager.DisplayMessage(new InformationMessage(message));
         }
+
+        public static CharacterObject GetCharacterObject(string characterId) {
+            return MBObjectManager.Instance.GetObject<CharacterObject>(characterId);
+        }
+
+        public static CharacterObject[] GetCultureBasicTroops(string cultureId) {
+            var basicCharacters = new CharacterObject[2];
+
+            var culture = MBObjectManager.Instance.GetObject<CultureObject>(cultureId);
+
+            if (culture == null) {
+                Helpers.Message("culture was null");
+                return basicCharacters;
+            }
+
+            basicCharacters[0] = culture.BasicTroop;
+            basicCharacters[1] = culture.EliteBasicTroop;
+
+            return basicCharacters;
+        } 
     }
 }
