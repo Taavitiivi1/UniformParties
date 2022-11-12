@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.CharacterDevelopment;
 using TaleWorlds.CampaignSystem.MapEvents;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Roster;
@@ -18,9 +19,12 @@ namespace UniformParties {
         private Dictionary<string, FactionTroops> cultureTroops = new Dictionary<string, FactionTroops>();
 
         public override void RegisterEvents() {
-            CampaignEvents.DailyTickPartyEvent.AddNonSerializedListener(this, new Action<MobileParty>(OnDailyTickParty));
-            CampaignEvents.MapEventStarted.AddNonSerializedListener(this, new Action<MapEvent, PartyBase, PartyBase>(OnMapEventStarted));
             CampaignEvents.OnSessionLaunchedEvent.AddNonSerializedListener(this, new Action<CampaignGameStarter>(OnSessionLaunched));
+            CampaignEvents.OnTroopRecruitedEvent.AddNonSerializedListener(this, new Action<Hero, Settlement, Hero, CharacterObject, int>(OnTroopRecruited));
+        }
+
+        private void OnTroopRecruited(Hero recruiter, Settlement settlement, Hero recruitmentSource, CharacterObject troop, int count) {
+            UpdateTroopRoster(recruiter.PartyBelongedTo);
         }
 
         private void OnSessionLaunched(CampaignGameStarter starter) {
@@ -32,43 +36,27 @@ namespace UniformParties {
             cultureTroops.Add("aserai", new FactionTroops("aserai"));
         }
 
-        private void OnDailyTickParty(MobileParty mobileParty) {
-            UpdateTroopRoster(mobileParty);
-        }
-
-
-        private void OnMapEventStarted(MapEvent mapEvent, PartyBase partyBase1, PartyBase partyBase2) {
-            if (mapEvent.IsFieldBattle || mapEvent.IsSiegeAssault || mapEvent.IsSiegeOutside) {
-                Helpers.Message("MapEvent conditions passed");
-                //UpdateTroopRoster(partyBase1.mobileParty);
-                //UpdateTroopRoster(partyBase2.mobileParty);
-            }
-        }
-
         private void UpdateTroopRoster(MobileParty mobileParty) {
-            if (mobileParty == null || mobileParty.LeaderHero == null || mobileParty.MemberRoster == null) return;
+            if (mobileParty == null || mobileParty.LeaderHero == null || mobileParty.MemberRoster == null || mobileParty.IsMainParty) return;
 
             var troopRoster = mobileParty.MemberRoster;
             var leaderHero = mobileParty.LeaderHero;
             var leaderCulture = leaderHero.Culture;
-
-            Helpers.Message(mobileParty.StringId);
+            var factionTroops = FactionTroops.Find(leaderCulture);
 
             removeDict.Clear();
             addDict.Clear();
 
             foreach (TroopRosterElement troop in troopRoster.GetTroopRoster()) {
-                if (troop.Character.Culture == leaderCulture) continue;
+                if (troop.Character.Culture == leaderCulture || troop.Character.Culture.StringId == "neutral_culture" || !FactionTroops.AllTroops.Contains(troop.Character)) continue;
 
-                CharacterObject character = troop.Character;
-                int troopTier = character.Tier;
-                CultureObject culture = character.Culture;
+                var character = troop.Character;
+                var troopTier = character.Tier;
                 List<CharacterObject> troopsOfTier;
 
-                AddToDict(character, removeDict);
-                FactionTroops factionTroops = FactionTroops.Find(culture);
+                RemoveFromDict(character, removeDict, troop.Number);
 
-                if (FactionTroops.AllNobleTroopIds.Contains(character.StringId)) troopsOfTier = factionTroops.NobleTiers[troopTier - 1];
+                if (FactionTroops.AllNobleTroops.Contains(character)) troopsOfTier = factionTroops.NobleTiers[troopTier - 1];
                 else troopsOfTier = factionTroops.RegularTiers[troopTier - 1];
                 
                 for (int i = 0; i < troop.Number; i++) {
@@ -80,23 +68,28 @@ namespace UniformParties {
 
             // add all units that are in add troops list
             foreach (var troop in addDict) {
-                mobileParty.AddElementToMemberRoster(troop.Key, troop.Value);
                 Helpers.Message($"{troop.Value} {troop.Key} added to party.");
+                mobileParty.AddElementToMemberRoster(troop.Key, troop.Value);
             }
 
             // remove all units that are in removeable troops list
             foreach (var troop in removeDict) {
-                troopRoster.RemoveTroop(troop.Key, troop.Value);
                 Helpers.Message($"{troop.Value} {troop.Key} removed from party.");
-            } 
+                troopRoster.RemoveTroop(troop.Key, troop.Value);  
+            }
 
         }
 
         public override void SyncData(IDataStore dataStore) {}
 
         private void AddToDict(CharacterObject character, Dictionary<CharacterObject, int> dict) {
-            if (!dict.ContainsKey(character)) dict.Add(character, 0);
-            dict[character]++;
+            if (!dict.ContainsKey(character)) dict.Add(character, 1);
+            else dict[character]++;
+        }
+
+        private void RemoveFromDict(CharacterObject character, Dictionary<CharacterObject, int> dict, int count) {
+            if (!dict.ContainsKey(character)) dict.Add(character, count);
+            else dict[character]++;
         }
     }
 }

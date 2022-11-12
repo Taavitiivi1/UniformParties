@@ -20,7 +20,9 @@ namespace UniformParties {
         /// <summary>
         /// HashSet is used to quickly compare a string with the contents of the hashset to see if a troop is noble
         /// </summary>
-        public static HashSet<string> AllNobleTroopIds = new HashSet<string>();
+        public static HashSet<CharacterObject> AllNobleTroops = new HashSet<CharacterObject>();
+        public static HashSet<CharacterObject> AllRegularTroops = new HashSet<CharacterObject>();
+        public static HashSet<CharacterObject> AllTroops = new HashSet<CharacterObject>();
         public static List<FactionTroops> AllFactionTroops = new List<FactionTroops>();
 
         public FactionTroops(string cultureId) {
@@ -29,11 +31,12 @@ namespace UniformParties {
             RegularRecruit = basicTroops[0];
             NobleRecruit = basicTroops[1];
             PopulateListsByTier();
-            DisplayArrayContents();
+            //PrintArrayContents();
             AllFactionTroops.Add(this);
         }
 
         private void PopulateListsByTier() {
+            // TODO: Add caravan guards, caravan masters, villagers etc.
             GetTroop(RegularRecruit, RegularTiers, false);
             GetTroop(NobleRecruit, NobleTiers, true);
         }
@@ -47,7 +50,10 @@ namespace UniformParties {
             int troopTier = character.Tier;
             listToAddTo[troopTier - 1].Add(character);
 
-            if (noble) AllNobleTroopIds.Add(character.StringId);
+            if (noble) AllNobleTroops.Add(character);
+            else AllRegularTroops.Add(character);
+
+            AllTroops.Add(character);
 
             if (character.UpgradeTargets.Length > 0) {
                 for (int i = 0; i < character.UpgradeTargets.Length; i++) {
@@ -56,7 +62,8 @@ namespace UniformParties {
             }
         }
 
-        public void DisplayArrayContents() {
+        public void PrintArrayContents() {
+            /*
             Helpers.Message("\nRegular troops: ");
 
             foreach (var tierList in RegularTiers) {
@@ -80,8 +87,13 @@ namespace UniformParties {
             }
 
             Helpers.Message("\nAll noble troops: ");
-            foreach (var troopId in AllNobleTroopIds) {
-                Helpers.Message(troopId);
+            foreach (var troop in AllNobleTroops) {
+                Helpers.Message(troop.ToString());
+            }
+            */
+            Helpers.Message("\nAll troops: ");
+            foreach (var troop in AllTroops) {
+                Helpers.Message(troop.ToString());
             }
         }
 
