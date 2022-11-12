@@ -13,16 +13,9 @@ using TaleWorlds.Core;
 namespace UniformParties {
     internal class UniformPartiesBehavior : CampaignBehaviorBase {
 
-        private List<TroopRosterElement> removeList = new List<TroopRosterElement>();
-        private List<TroopRosterElement> addList = new List<TroopRosterElement>();
-        private FactionTroops empire { get; set; }
-        private FactionTroops battania { get; set; }
-        private FactionTroops sturgia { get; set; }
-        private FactionTroops vlandia { get; set; }
-        private FactionTroops khuzait { get; set; }
-        private FactionTroops aserai { get; set; }
-
-        Dictionary<string, FactionTroops> cultureTroops = new Dictionary<string, FactionTroops>();
+        private Dictionary<CharacterObject, int> removeDict = new Dictionary<CharacterObject, int>();
+        private Dictionary<CharacterObject, int> addDict = new Dictionary<CharacterObject, int>();
+        private Dictionary<string, FactionTroops> cultureTroops = new Dictionary<string, FactionTroops>();
 
         public override void RegisterEvents() {
             CampaignEvents.DailyTickPartyEvent.AddNonSerializedListener(this, new Action<MobileParty>(OnDailyTickParty));
@@ -59,8 +52,10 @@ namespace UniformParties {
             var leaderHero = mobileParty.LeaderHero;
             var leaderCulture = leaderHero.Culture;
 
-            removeList.Clear();
-            addList.Clear();
+            Helpers.Message(mobileParty.StringId);
+
+            removeDict.Clear();
+            addDict.Clear();
 
             foreach (TroopRosterElement troop in troopRoster.GetTroopRoster()) {
                 if (troop.Character.Culture == leaderCulture) continue;
@@ -70,7 +65,7 @@ namespace UniformParties {
                 CultureObject culture = character.Culture;
                 List<CharacterObject> troopsOfTier;
 
-                removeList.Add(troop);
+                AddToDict(character, removeDict);
                 FactionTroops factionTroops = FactionTroops.Find(culture);
 
                 if (FactionTroops.AllNobleTroopIds.Contains(character.StringId)) troopsOfTier = factionTroops.NobleTiers[troopTier - 1];
@@ -79,22 +74,29 @@ namespace UniformParties {
                 for (int i = 0; i < troop.Number; i++) {
                     // pick random new unit from list
                     CharacterObject randomCharacterObject = troopsOfTier[MBRandom.RandomInt(0, troopsOfTier.Count - 1)];
-                    //addList.Add(troopsOfTier[MBRandom.RandomInt(0, troopsOfTier.Count - 1)]);
-                    // add to addList
+                    AddToDict(randomCharacterObject, addDict);
                 }
             }
+
             // add all units that are in add troops list
+            foreach (var troop in addDict) {
+                mobileParty.AddElementToMemberRoster(troop.Key, troop.Value);
+                Helpers.Message($"{troop.Value} {troop.Key} added to party.");
+            }
+
             // remove all units that are in removeable troops list
+            foreach (var troop in removeDict) {
+                troopRoster.RemoveTroop(troop.Key, troop.Value);
+                Helpers.Message($"{troop.Value} {troop.Key} removed from party.");
+            } 
+
         }
 
         public override void SyncData(IDataStore dataStore) {}
 
-        private void AddToList(TroopRosterElement troopElement, List<TroopRosterElement> list) {
-            if (list.Contains(troopElement)) {
-                var troop = list.Find(x => x.Character == troopElement.Character);
-                troop.Number++;
-            }
-            else list.Add(troopElement);
+        private void AddToDict(CharacterObject character, Dictionary<CharacterObject, int> dict) {
+            if (!dict.ContainsKey(character)) dict.Add(character, 0);
+            dict[character]++;
         }
     }
 }
