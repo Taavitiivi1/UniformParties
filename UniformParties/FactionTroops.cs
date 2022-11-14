@@ -16,27 +16,21 @@ namespace UniformParties {
                                                                              select new List<CharacterObject>()).ToArray();
         public List<CharacterObject>[] NobleTiers { get; private set; } = (from i in Enumerable.Range(0, 7)
                                                                            select new List<CharacterObject>()).ToArray();
-
-        /// <summary>
-        /// HashSet is used to quickly compare a string with the contents of the hashset to see if a troop is noble
-        /// </summary>
-        public static HashSet<CharacterObject> AllNobleTroops = new HashSet<CharacterObject>();
-        public static HashSet<CharacterObject> AllRegularTroops = new HashSet<CharacterObject>();
-        public static HashSet<CharacterObject> AllTroops = new HashSet<CharacterObject>();
-        public static List<FactionTroops> AllFactionTroops = new List<FactionTroops>();
+        public List<CharacterObject> NobleTroops { get; private set; } = new List<CharacterObject>();
+        public List<CharacterObject> RegularTroops { get; private set; } = new List<CharacterObject>();
+        public List<CharacterObject> AllowedTroops { get; private set; } = new List<CharacterObject>();
+        
 
         public FactionTroops(string cultureId) {
             Culture = MBObjectManager.Instance.GetObject<CultureObject>(cultureId);
-            var basicTroops = Helpers.GetCultureBasicTroops(cultureId);
+            var basicTroops = GetCultureBasicTroops(cultureId);
             RegularRecruit = basicTroops[0];
             NobleRecruit = basicTroops[1];
             PopulateListsByTier();
             //PrintArrayContents();
-            AllFactionTroops.Add(this);
         }
 
         private void PopulateListsByTier() {
-            // TODO: Add caravan guards, caravan masters, villagers etc.
             GetTroop(RegularRecruit, RegularTiers, false);
             GetTroop(NobleRecruit, NobleTiers, true);
         }
@@ -50,16 +44,41 @@ namespace UniformParties {
             int troopTier = character.Tier;
             listToAddTo[troopTier - 1].Add(character);
 
-            if (noble) AllNobleTroops.Add(character);
-            else AllRegularTroops.Add(character);
+            if (noble) NobleTroops.Add(character);
+            else RegularTroops.Add(character);
 
-            AllTroops.Add(character);
+            AllowedTroops.Add(character);
 
             if (character.UpgradeTargets.Length > 0) {
                 for (int i = 0; i < character.UpgradeTargets.Length; i++) {
                     GetTroop(character.UpgradeTargets[i], listToAddTo, noble);
                 }
             }
+        }
+
+        public static FactionTroops Find(CultureObject culture, List<FactionTroops> factionTroopsList) {
+            foreach (var factionTroops in factionTroopsList) {
+                if (culture == factionTroops.Culture) return factionTroops;
+            }
+
+            Helpers.Message("FactionTroops could not be found. Returned empire FactionTroops.");
+            return Find(MBObjectManager.Instance.GetObject<CultureObject>("empire"), factionTroopsList);
+        }
+
+        private CharacterObject[] GetCultureBasicTroops(string cultureId) {
+            var basicCharacters = new CharacterObject[2];
+
+            var culture = MBObjectManager.Instance.GetObject<CultureObject>(cultureId);
+
+            if (culture == null) {
+                Helpers.Message("culture was null");
+                return basicCharacters;
+            }
+
+            basicCharacters[0] = culture.BasicTroop;
+            basicCharacters[1] = culture.EliteBasicTroop;
+
+            return basicCharacters;
         }
 
         public void PrintArrayContents() {
@@ -91,19 +110,10 @@ namespace UniformParties {
                 Helpers.Message(troop.ToString());
             }
             */
-            Helpers.Message("\nAll troops: ");
-            foreach (var troop in AllTroops) {
+            Helpers.Message("\nAllowed troops: ");
+            foreach (var troop in AllowedTroops) {
                 Helpers.Message(troop.ToString());
             }
-        }
-
-        public static FactionTroops Find(CultureObject culture) {
-            foreach (var factionTroops in AllFactionTroops) {
-                if (culture == factionTroops.Culture) return factionTroops;
-            }
-
-            Helpers.Message("FactionTroops could not be found. Returned empire FactionTroops.");
-            return Find(MBObjectManager.Instance.GetObject<CultureObject>("empire"));
         }
     }
 }

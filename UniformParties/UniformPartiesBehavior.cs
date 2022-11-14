@@ -9,87 +9,89 @@ using TaleWorlds.CampaignSystem.MapEvents;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Roster;
 using TaleWorlds.CampaignSystem.Settlements;
+using TaleWorlds.CampaignSystem.ViewModelCollection.CharacterDeveloper;
 using TaleWorlds.Core;
+using TaleWorlds.Library;
+using TaleWorlds.ObjectSystem;
 
 namespace UniformParties {
     internal class UniformPartiesBehavior : CampaignBehaviorBase {
 
-        private Dictionary<CharacterObject, int> removeDict = new Dictionary<CharacterObject, int>();
-        private Dictionary<CharacterObject, int> addDict = new Dictionary<CharacterObject, int>();
-        private Dictionary<string, FactionTroops> cultureTroops = new Dictionary<string, FactionTroops>();
+        public static List<FactionTroops> FactionTroopsList = new List<FactionTroops>();
+        public static List<Clan> MinorClans { get; private set; } = new List<Clan>();
 
         public override void RegisterEvents() {
-            CampaignEvents.OnSessionLaunchedEvent.AddNonSerializedListener(this, new Action<CampaignGameStarter>(OnSessionLaunched));
+            CampaignEvents.OnAfterSessionLaunchedEvent.AddNonSerializedListener(this, new Action<CampaignGameStarter>(OnAfterSessionLaunched));
             CampaignEvents.OnTroopRecruitedEvent.AddNonSerializedListener(this, new Action<Hero, Settlement, Hero, CharacterObject, int>(OnTroopRecruited));
         }
 
         private void OnTroopRecruited(Hero recruiter, Settlement settlement, Hero recruitmentSource, CharacterObject troop, int count) {
-            UpdateTroopRoster(recruiter.PartyBelongedTo);
+            if (recruiter == null) return;
+            UpdateTroopRoster(recruiter.PartyBelongedTo, troop, count);
         }
 
-        private void OnSessionLaunched(CampaignGameStarter starter) {
-            cultureTroops.Add("empire", new FactionTroops("empire"));
-            cultureTroops.Add("sturgia", new FactionTroops("sturgia"));
-            cultureTroops.Add("battania", new FactionTroops("battania"));
-            cultureTroops.Add("vlandia", new FactionTroops("vlandia"));
-            cultureTroops.Add("khuzait", new FactionTroops("khuzait"));
-            cultureTroops.Add("aserai", new FactionTroops("aserai"));
+        private void OnAfterSessionLaunched(CampaignGameStarter starter) {
+            FactionTroopsList = PopulateFactionTroops();
+            MinorClans = FindMinorClans();
         }
 
-        private void UpdateTroopRoster(MobileParty mobileParty) {
-            if (mobileParty == null || mobileParty.LeaderHero == null || mobileParty.MemberRoster == null || mobileParty.IsMainParty) return;
+        private void UpdateTroopRoster(MobileParty mobileParty, CharacterObject troop, int count) {
+            if (mobileParty == null || mobileParty.LeaderHero == null || mobileParty.LeaderHero.Culture == null || troop == null) return;
 
             var troopRoster = mobileParty.MemberRoster;
             var leaderHero = mobileParty.LeaderHero;
             var leaderCulture = leaderHero.Culture;
-            var factionTroops = FactionTroops.Find(leaderCulture);
+            var factionTroopsInstance = FactionTroops.Find(leaderCulture, FactionTroopsList);
+            var troopCulture = troop.Culture;
+            var troopTier = troop.Tier; // If tier does not exist, find the next closest one
 
-            removeDict.Clear();
-            addDict.Clear();
+            if (factionTroopsInstance.AllowedTroops.Contains(troop) || troopRoster == null || mobileParty.IsMainParty ||
+                troopCulture == leaderCulture || troopCulture.StringId == "neutral_culture") return;
 
-            foreach (TroopRosterElement troop in troopRoster.GetTroopRoster()) {
-                if (troop.Character.Culture == leaderCulture || troop.Character.Culture.StringId == "neutral_culture" || !FactionTroops.AllTroops.Contains(troop.Character)) continue;
+            List<CharacterObject> troopsOfTier = GetTroopsOfTier(factionTroopsInstance, troop);
 
-                var character = troop.Character;
-                var troopTier = character.Tier;
-                List<CharacterObject> troopsOfTier;
-
-                RemoveFromDict(character, removeDict, troop.Number);
-
-                if (FactionTroops.AllNobleTroops.Contains(character)) troopsOfTier = factionTroops.NobleTiers[troopTier - 1];
-                else troopsOfTier = factionTroops.RegularTiers[troopTier - 1];
-                
-                for (int i = 0; i < troop.Number; i++) {
-                    // pick random new unit from list
-                    CharacterObject randomCharacterObject = troopsOfTier[MBRandom.RandomInt(0, troopsOfTier.Count - 1)];
-                    AddToDict(randomCharacterObject, addDict);
-                }
+            for (int i = 0; i < count; i++) {
+                CharacterObject randomCharacterObject = troopsOfTier[MBRandom.RandomInt(0, troopsOfTier.Count - 1)];
+                mobileParty.AddElementToMemberRoster(randomCharacterObject, 1);
             }
 
-            // add all units that are in add troops list
-            foreach (var troop in addDict) {
-                Helpers.Message($"{troop.Value} {troop.Key} added to party.");
-                mobileParty.AddElementToMemberRoster(troop.Key, troop.Value);
-            }
+            troopRoster.RemoveTroop(troop, count);
+            Helpers.Message("Roster updated");
+        }
 
-            // remove all units that are in removeable troops list
-            foreach (var troop in removeDict) {
-                Helpers.Message($"{troop.Value} {troop.Key} removed from party.");
-                troopRoster.RemoveTroop(troop.Key, troop.Value);  
-            }
-
+        private List<CharacterObject> GetTroopsOfTier(FactionTroops factionTroops, CharacterObject troop) {
+            if (factionTroops.NobleTroops.Contains(troop)) return factionTroops.NobleTiers[troop.Tier - 1];
+            else return factionTroops.RegularTiers[troop.Tier - 1];
         }
 
         public override void SyncData(IDataStore dataStore) {}
 
-        private void AddToDict(CharacterObject character, Dictionary<CharacterObject, int> dict) {
-            if (!dict.ContainsKey(character)) dict.Add(character, 1);
-            else dict[character]++;
+        private List<Clan> FindMinorClans() {
+            var minorClans = new List<Clan>();
+
+            foreach (var clan in Clan.All) {
+                if (clan.IsMinorFaction && !clan.IsBanditFaction) {
+                    minorClans.Add(clan);
+                    Helpers.Message(clan.Name.ToString());
+                }
+            }
+
+            return minorClans;
         }
 
-        private void RemoveFromDict(CharacterObject character, Dictionary<CharacterObject, int> dict, int count) {
-            if (!dict.ContainsKey(character)) dict.Add(character, count);
-            else dict[character]++;
+        private List<FactionTroops> PopulateFactionTroops() {
+            var factionTroops = new List<FactionTroops>();
+
+            foreach (var kingdom in Kingdom.All) {
+                if (kingdom.IsKingdomFaction) {
+                    string stringId = kingdom.StringId;
+                    if (stringId == "empire_w" || stringId == "empire_s") continue;
+                    factionTroops.Add(new FactionTroops(stringId));
+                    Helpers.Message(stringId);
+                }
+            }
+            Helpers.Message("\n---\n");
+            return factionTroops;
         }
     }
 }
