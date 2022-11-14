@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
 using TaleWorlds.CampaignSystem;
@@ -17,8 +18,7 @@ using TaleWorlds.ObjectSystem;
 namespace UniformParties {
     internal class UniformPartiesBehavior : CampaignBehaviorBase {
 
-        public static List<FactionTroops> FactionTroopsList = new List<FactionTroops>();
-        public static List<Clan> MinorClans { get; private set; } = new List<Clan>();
+        public static List<FactionTroopsBase> FactionTroopsList = new List<FactionTroopsBase>();
 
         public override void RegisterEvents() {
             CampaignEvents.OnAfterSessionLaunchedEvent.AddNonSerializedListener(this, new Action<CampaignGameStarter>(OnAfterSessionLaunched));
@@ -32,7 +32,6 @@ namespace UniformParties {
 
         private void OnAfterSessionLaunched(CampaignGameStarter starter) {
             FactionTroopsList = PopulateFactionTroops();
-            MinorClans = FindMinorClans();
         }
 
         private void UpdateTroopRoster(MobileParty mobileParty, CharacterObject troop, int count) {
@@ -41,56 +40,53 @@ namespace UniformParties {
             var troopRoster = mobileParty.MemberRoster;
             var leaderHero = mobileParty.LeaderHero;
             var leaderCulture = leaderHero.Culture;
-            var factionTroopsInstance = FactionTroops.Find(leaderCulture, FactionTroopsList);
             var troopCulture = troop.Culture;
             var troopTier = troop.Tier; // If tier does not exist, find the next closest one
+            var factionTroopsInstance = FindFactionTroops(); FactionTroopsBase.Find(leaderCulture);
 
-            if (factionTroopsInstance.AllowedTroops.Contains(troop) || troopRoster == null || mobileParty.IsMainParty ||
-                troopCulture == leaderCulture || troopCulture.StringId == "neutral_culture") return;
+            if (FactionTroopsBase.AllFactionTroopsList.Contains(mobileParty.))
+
+            if (factionTroopsInstance.AllowedTroops.AllTroops.Contains(troop) || troopRoster == null || mobileParty.IsMainParty || troopCulture.StringId == "neutral_culture") return;
 
             List<CharacterObject> troopsOfTier = GetTroopsOfTier(factionTroopsInstance, troop);
 
             for (int i = 0; i < count; i++) {
                 CharacterObject randomCharacterObject = troopsOfTier[MBRandom.RandomInt(0, troopsOfTier.Count - 1)];
                 mobileParty.AddElementToMemberRoster(randomCharacterObject, 1);
+                Helpers.Message($"{randomCharacterObject} added to party.");
             }
 
             troopRoster.RemoveTroop(troop, count);
-            Helpers.Message("Roster updated");
+            Helpers.Message($"{count} {troop} removed from party.");
         }
 
-        private List<CharacterObject> GetTroopsOfTier(FactionTroops factionTroops, CharacterObject troop) {
-            if (factionTroops.NobleTroops.Contains(troop)) return factionTroops.NobleTiers[troop.Tier - 1];
-            else return factionTroops.RegularTiers[troop.Tier - 1];
+        private List<CharacterObject> GetTroopsOfTier(FactionTroopsBase factionTroops, CharacterObject troop) {
+            if (factionTroops.NobleRecruits.Contains(troop)) return factionTroops.AllowedTroops.NobleTiers[troop.Tier - 1];
+            else return factionTroops.AllowedTroops.RegularTiers[troop.Tier - 1];
         }
 
         public override void SyncData(IDataStore dataStore) {}
 
-        private List<Clan> FindMinorClans() {
-            var minorClans = new List<Clan>();
-
-            foreach (var clan in Clan.All) {
-                if (clan.IsMinorFaction && !clan.IsBanditFaction) {
-                    minorClans.Add(clan);
-                    Helpers.Message(clan.Name.ToString());
-                }
-            }
-
-            return minorClans;
-        }
-
-        private List<FactionTroops> PopulateFactionTroops() {
-            var factionTroops = new List<FactionTroops>();
+        private List<FactionTroopsBase> PopulateFactionTroops() {
+            var factionTroops = new List<FactionTroopsBase>();
 
             foreach (var kingdom in Kingdom.All) {
                 if (kingdom.IsKingdomFaction) {
-                    string stringId = kingdom.StringId;
-                    if (stringId == "empire_w" || stringId == "empire_s") continue;
-                    factionTroops.Add(new FactionTroops(stringId));
-                    Helpers.Message(stringId);
+                    CultureObject culture = kingdom.Culture;
+                    if (culture.StringId == "empire_w" || culture.StringId == "empire_s") continue;
+                    factionTroops.Add(new KingdomFactionTroops(culture));
+                    Helpers.Message(culture.StringId);
                 }
             }
-            Helpers.Message("\n---\n");
+
+            foreach (var clan in Clan.All) {
+                if (clan.IsMinorFaction && !clan.IsBanditFaction && !(clan == Clan.PlayerClan)) {
+                    string stringId = clan.StringId;
+                    Helpers.Message(stringId);
+                    factionTroops.Add(new MinorClanFactionTroops(clan));
+                }
+            }
+
             return factionTroops;
         }
     }
